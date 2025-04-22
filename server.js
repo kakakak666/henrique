@@ -2,6 +2,7 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const port = process.env.PORT || 4000;
 
 // Criação do app e do servidor HTTP
 const app = express();
