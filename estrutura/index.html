@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jogo de Adivinhação de Bandeiras</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <!-- Tela de início -->
+  <div id="inicio">
+    <h1>Bem-vindo ao Jogo de Adivinhação de Bandeiras!</h1>
+    <input type="text" id="nomeJogador" placeholder="Digite seu nome">
+    <button onclick="iniciarJogo()">Iniciar Jogo</button>
+  </div>
+
+  <!-- Tela do jogo -->
+  <div id="jogo" style="display: none;">
+    <h2 id="nomeJogadorDisplay"></h2>
+    <img id="bandeiraImagem" src="" alt="Bandeira">
+    <input type="text" id="resposta" placeholder="Qual é o país?">
+    <button onclick="enviarResposta()">Enviar Resposta</button>
+    <div id="pontuacao"></div>
+    <h3>Jogadores:</h3>
+    <ul id="listaJogadores"></ul>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

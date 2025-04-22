@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jogo de Adivinhação de Bandeiras</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <div id="jogo">
+    <h2 id="nomeJogadorDisplay"></h2>
+    <img id="bandeiraImagem" src="" alt="Bandeira">
+    <input type="text" id="resposta" placeholder="Qual é o país?">
+    <button onclick="enviarResposta()">Enviar Resposta</button>
+    <div id="pontuacao"></div>
+    <div id="tempos"></div>
+    <h3>Jogadores:</h3>
+    <ul id="listaJogadores"></ul>
+  </div>
+</body>
+<script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
+</html>
