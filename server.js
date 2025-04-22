@@ -98,5 +98,5 @@ app.use(express.static('estrutura'));
 
 // Inicia o servidor
 server.listen(3000, () => {
-  console.log('Servidor rodando na porta 3000');
+  console.log('Servidor rodando na portaaaaa 3000');
 });
