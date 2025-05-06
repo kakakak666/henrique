@@ -1,102 +1,145 @@
-// Importa os módulos necessários
 const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const port = process.env.PORT || 4000;
-
-// Criação do app e do servidor HTTP
+const fs = require('fs-extra');
+const path = require('path');
+const cors = require('cors');
+const schedule = require('node-schedule');
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server);
 
-// Dados do jogo em memória
-let jogadores = []; // Lista de jogadores conectados
-let pontuacoes = {}; // Pontuação dos jogadores
-// (usada para frontend)
+const BASE_DIR = 'salas';
 
-// Lista de bandeiras (pode adicionar mais)
-let bandeiras = [
-  { pais: 'Brasil', url: 'https://upload.wikimedia.org/wikipedia/commons/0/05/Flag_of_Brazil.svg' },
-  { pais: 'Alemanha', url: 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Flag_of_Germany.svg' },
-  { pais: 'EUA', url: 'https://upload.wikimedia.org/wikipedia/commons/a/a4/Flag_of_the_United_States.svg' },
-  { pais: 'Japão', url: 'https://upload.wikimedia.org/wikipedia/en/9/9e/Flag_of_Japan.svg' },
-  { pais: 'França', url: 'https://upload.wikimedia.org/wikipedia/en/c/c3/Flag_of_France.svg' }
-];
+// Garante que a pasta base exista
+fs.ensureDirSync(BASE_DIR);
 
-// Função utilitária para sortear uma bandeira
-function obterBandeiraAleatoria() {
-  return bandeiras[Math.floor(Math.random() * bandeiras.length)];
+// Permite requisições de qualquer origem (incluindo 127.0.0.1:5500)
+app.use(cors());
+app.use(express.json());
+
+// Função para deletar uma sala após 15 minutos
+function agendarExclusaoSala(caminhoSala, nomeSala) {
+  schedule.scheduleJob(Date.now() + 900000, () => {  // 900000ms = 15 minutos
+    fs.remove(caminhoSala, err => {
+      if (err) {
+        console.log(`Erro ao excluir a sala ${nomeSala}: ${err}`);
+      } else {
+        console.log(`Sala ${nomeSala} excluída automaticamente após 15 minutos.`);
+      }
+    });
+  });
 }
 
-// Quando um jogador se conecta
-io.on('connection', (socket) => {
-  console.log('Novo jogador conectado:', socket.id);
+// Rota para criar uma sala
+app.post('/sala', (req, res) => {
+  const timestamp = new Date().toISOString().replace(/[-:.T]/g, '');
+  const nomeSala = `sala_${timestamp}`;
+  const caminhoSala = path.join(BASE_DIR, nomeSala);
+  fs.ensureDirSync(caminhoSala);
 
-  // Quando o jogador inicia o jogo com seu nome
-  socket.on('iniciar_jogo', (nomeJogador) => {
-    const bandeiraInicial = obterBandeiraAleatoria();
+  // Registrar o momento da criação (opcional, para controle ou logs)
+  fs.writeFileSync(path.join(caminhoSala, 'created_at.txt'), new Date().toISOString());
 
-    const novoJogador = {
-      id: socket.id,
-      nome: nomeJogador,
-      pontuacao: 0,
-      tempo: 0,
-      bandeiraAtual: bandeiraInicial // Guardamos a bandeira que ele recebeu
-    };
+  // Agendar exclusão automática
+  agendarExclusaoSala(caminhoSala, nomeSala);
 
-    jogadores.push(novoJogador);
-    pontuacoes[socket.id] = {
-      nome: nomeJogador,
-      pontuacao: 0,
-      tempo: 0
-    };
-
-    // Envia a lista atualizada de jogadores para todos
-    io.emit('atualizar_jogadores', jogadores);
-
-    // Envia a primeira bandeira apenas para o jogador que começou
-    io.to(socket.id).emit('bandeira', bandeiraInicial);
-  });
-
-  // Quando o jogador envia uma resposta
-  socket.on('resposta', (resposta) => {
-    const jogador = jogadores.find(j => j.id === socket.id);
-    if (!jogador) return;
-
-    // Verifica se a resposta está correta
-    if (resposta.trim().toLowerCase() === jogador.bandeiraAtual.pais.toLowerCase()) {
-      jogador.pontuacao += 10;
-      pontuacoes[socket.id].pontuacao = jogador.pontuacao;
-    }
-
-    // Sorteia uma nova bandeira para esse jogador
-    const novaBandeira = obterBandeiraAleatoria();
-    jogador.bandeiraAtual = novaBandeira;
-
-    // Envia a nova bandeira para esse jogador
-    io.to(socket.id).emit('bandeira', novaBandeira);
-
-    // Atualiza a pontuação de todos os jogadores
-    io.emit('atualizar_pontuacao', jogadores);
-  });
-
-  // Quando um jogador desconecta
-  socket.on('disconnect', () => {
-    console.log('Jogador desconectado:', socket.id);
-
-    // Remove o jogador da lista e limpa a pontuação
-    jogadores = jogadores.filter(j => j.id !== socket.id);
-    delete pontuacoes[socket.id];
-
-    // Atualiza os jogadores conectados no frontend
-    io.emit('atualizar_jogadores', jogadores);
-  });
+  res.status(201).json({ mensagem: 'Sala criada', sala: nomeSala });
 });
 
-// Servindo os arquivos da pasta 'estrutura' (HTML, CSS, JS frontend)
-app.use(express.static('estrutura'));
+// Rota para adicionar um usuário à sala
+app.post('/sala/:nomeSala/novo_usuario', (req, res) => {
+  const { nomeSala } = req.params;
+  const { nome } = req.body;
+
+  if (!nome) {
+    return res.status(400).json({ erro: 'Nome do usuário é obrigatório' });
+  }
+
+  const caminhoSala = path.join(BASE_DIR, nomeSala);
+  if (!fs.existsSync(caminhoSala)) {
+    return res.status(404).json({ erro: 'Sala não encontrada' });
+  }
+
+  const caminhoUsuario = path.join(caminhoSala, `${nome}.txt`);
+  fs.writeFileSync(caminhoUsuario, `nome: ${nome}\npontos: 0\n`);
+
+  res.status(201).json({ mensagem: `Usuário ${nome} adicionado à sala ${nomeSala}` });
+});
+
+// Rota para obter os pontos de um usuário
+app.get('/sala/:nomeSala/usuario/:nomeUsuario/pontos', (req, res) => {
+  const { nomeSala, nomeUsuario } = req.params;
+  const caminhoUsuario = path.join(BASE_DIR, nomeSala, `${nomeUsuario}.txt`);
+
+  if (!fs.existsSync(caminhoUsuario)) {
+    return res.status(404).json({ erro: 'Usuário não encontrado' });
+  }
+
+  const dadosUsuario = fs.readFileSync(caminhoUsuario, 'utf-8');
+  const pontos = dadosUsuario.split('\n').find(line => line.startsWith('pontos:')).split(':')[1].trim();
+
+  res.json({ usuario: nomeUsuario, pontos: parseInt(pontos, 10) });
+});
+
+// Rota para listar todas as salas
+app.get('/salas', (req, res) => {
+  if (!fs.existsSync(BASE_DIR)) {
+    return res.json([]);
+  }
+
+  const salas = fs.readdirSync(BASE_DIR).filter(nome => fs.statSync(path.join(BASE_DIR, nome)).isDirectory());
+  res.json(salas);
+});
+
+// Rota para atualizar os pontos de um usuário
+app.post('/sala/:nomeSala/usuario/:nomeUsuario/pontos', (req, res) => {
+  const { nomeSala, nomeUsuario } = req.params;
+  const { pontos } = req.body;
+
+  const caminhoUsuario = path.join(BASE_DIR, nomeSala, `${nomeUsuario}.txt`);
+  if (!fs.existsSync(caminhoUsuario)) {
+    return res.status(404).json({ erro: 'Usuário não encontrado' });
+  }
+
+  const dadosUsuario = fs.readFileSync(caminhoUsuario, 'utf-8');
+  const linhas = dadosUsuario.split('\n');
+
+  const novoConteudo = linhas.map(linha => {
+    if (linha.startsWith('pontos:')) {
+      return `pontos: ${pontos}`;
+    }
+    return linha;
+  }).join('\n');
+
+  fs.writeFileSync(caminhoUsuario, novoConteudo);
+
+  res.json({ mensagem: `Pontos do usuário ${nomeUsuario} atualizados para ${pontos}` });
+});
+
+// Rota para obter o ranking de uma sala
+app.get('/sala/:nomeSala/ranking', (req, res) => {
+  const { nomeSala } = req.params;
+  const caminhoSala = path.join(BASE_DIR, nomeSala);
+
+  if (!fs.existsSync(caminhoSala)) {
+    return res.status(404).json({ erro: 'Sala não encontrada' });
+  }
+
+  const arquivos = fs.readdirSync(caminhoSala).filter(arquivo => arquivo.endsWith('.txt') && arquivo !== 'created_at.txt');
+  
+  const ranking = arquivos.map(arquivo => {
+    const nomeUsuario = arquivo.replace('.txt', '');
+    const caminhoUsuario = path.join(caminhoSala, arquivo);
+    const dadosUsuario = fs.readFileSync(caminhoUsuario, 'utf-8');
+    const pontos = parseInt(dadosUsuario.split('\n').find(line => line.startsWith('pontos:')).split(':')[1].trim(), 10);
+    return { usuario: nomeUsuario, pontos };
+  });
+
+  // Ordena por pontos decrescentes
+  ranking.sort((a, b) => b.pontos - a.pontos);
+
+  res.json(ranking);
+});
 
 // Inicia o servidor
-server.listen(3000, () => {
-  console.log('Servidor rodando na portaaaaa 3000');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
 });
